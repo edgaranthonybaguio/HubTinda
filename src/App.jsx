@@ -676,7 +676,7 @@ function BottomNavBar({ screen, navigate, cartCount }) {
         <button key={t.id} className={`th-bnav-btn${screen === t.id ? " active" : ""}`} onClick={() => navigate(t.id)}>
           <span className="nb-icon">{t.tx}</span>
           {t.id === "cart" && cartCount > 0 && <span className="th-bnav-dot" />}
-          <span className="nb-label">{t.label}</span>
+          <span className="nb-label" style={{ fontSize: 14, fontWeight: 800 }}>{t.label}</span>
         </button>
       ))}
     </nav>
@@ -1405,6 +1405,20 @@ function CheckoutScreen({ navigate, showToast, user }) {
                 </button>
               ))}
             </div>
+            {payment !== "cod" && sellerInfo && (
+              <div style={{ marginTop: 14, padding: 14, borderRadius: "var(--r-xl)", background: "var(--surface)", border: "1px solid var(--border-soft)" }}>
+                <p style={{ margin: 0, fontSize: 11, fontWeight: 800, color: "var(--ink-muted)", fontFamily: "var(--display)", letterSpacing: ".06em" }}>PAY TO</p>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
+                  <div>
+                    <div style={{ fontWeight: 800, fontSize: 13 }}>{sellerInfo.name || sellerInfo.owner?.full_name || "Seller"}</div>
+                    <div style={{ fontSize: 12, color: "var(--ink-muted)" }}>{sellerInfo.phone || (sellerInfo.owner && sellerInfo.owner.phone) || "No number"}</div>
+                  </div>
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontSize: 11, color: "var(--ink-muted)", fontWeight: 700 }}>Exact amount</div>
+                  </div>
+                </div>
+              </div>
+            )}
             <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
               <button className="btn-outline" onClick={() => setStep(1)} style={{ flex: 1, height: 44, fontSize: 13 }}>← Back</button>
               <button className="btn-primary" onClick={() => setStep(3)} style={{ flex: 1 }}><span>Review Order →</span></button>
@@ -1654,9 +1668,19 @@ function OrderTrackingScreen({ navigate, params, showToast }) {
               </div>
             )}
 
-            <div style={{ height: 160, borderRadius: "var(--r-2xl)", overflow: "hidden", position: "relative", marginBottom: 22, background: "var(--surface-alt)", border: "1px solid var(--border-soft)", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 8 }}>
-              <div style={{ fontFamily: "var(--display)", fontWeight: 900, fontSize: 32, color: "var(--border)", letterSpacing: ".08em", animation: "floatY 3s ease-in-out infinite" }}>MAP</div>
-              <span style={{ fontSize: 11.5, color: "var(--ink-muted)", fontWeight: 700, fontFamily: "var(--display)", letterSpacing: ".06em" }}>LIVE TRACKING</span>
+            <div style={{ height: 260, borderRadius: "var(--r-2xl)", overflow: "hidden", position: "relative", marginBottom: 22, background: "var(--surface-alt)", border: "1px solid var(--border-soft)", display: "flex", alignItems: "stretch", justifyContent: "center", flexDirection: "column" }}>
+              {order?.delivery_lat && order?.delivery_lng ? (
+                <iframe
+                  title="live-map"
+                  src={`https://www.openstreetmap.org/export/embed.html?bbox=${order.delivery_lng - 0.02}%2C${order.delivery_lat - 0.01}%2C${order.delivery_lng + 0.02}%2C${order.delivery_lat + 0.01}&layer=mapnik&marker=${order.delivery_lat}%2C${order.delivery_lng}`}
+                  style={{ border: 0, width: "100%", height: "100%" }}
+                />
+              ) : (
+                <div style={{ display: "flex", flex: 1, alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 8 }}>
+                  <div style={{ fontFamily: "var(--display)", fontWeight: 900, fontSize: 28, color: "var(--border)", letterSpacing: ".08em" }}>MAP</div>
+                  <span style={{ fontSize: 11.5, color: "var(--ink-muted)", fontWeight: 700, fontFamily: "var(--display)", letterSpacing: ".06em" }}>LIVE TRACKING (no coords)</span>
+                </div>
+              )}
             </div>
 
             <h3 style={{ fontSize: 12, fontWeight: 800, color: "var(--ink-muted)", marginBottom: 16, fontFamily: "var(--display)", letterSpacing: ".08em", textTransform: "uppercase" }}>Timeline</h3>
