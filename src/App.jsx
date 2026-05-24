@@ -964,12 +964,17 @@ function ProductScreen({ params, navigate, showToast }) {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { showToast("Please login first", "error"); return; }
-      if (product.stock <= 0) { showToast("Out of stock", "error"); return; }
-      if (qty > product.stock) setQty(product.stock);
+      // re-check latest stock from DB to avoid stale UI allowing additions
+      const { data: latest } = await supabase.from("products").select("stock").eq("id", product.id).maybeSingle();
+      const latestStock = latest?.stock || 0;
+      if (latestStock <= 0) { showToast("Out of stock", "error"); return; }
+      if (qty > latestStock) { setQty(latestStock); showToast(`Only ${latestStock} left. Adjusted quantity.`, "error"); return; }
       setAddingCart(true);
       const { data: existing } = await supabase.from("cart_items").select("*").eq("user_id", user.id).eq("product_id", product.id).maybeSingle();
       if (existing) {
-        await supabase.from("cart_items").update({ quantity: (existing.quantity || 0) + qty }).eq("id", existing.id);
+        const newQty = (existing.quantity || 0) + qty;
+        if (newQty > latestStock) { showToast("Not enough stock to add this quantity", "error"); setAddingCart(false); return; }
+        await supabase.from("cart_items").update({ quantity: newQty }).eq("id", existing.id);
       } else {
         await supabase.from("cart_items").insert({ user_id: user.id, product_id: product.id, quantity: qty });
       }
