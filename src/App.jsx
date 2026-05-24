@@ -1036,9 +1036,12 @@ function ProductScreen({ params, navigate, showToast }) {
               <span style={{ fontSize: 28, fontWeight: 700, fontFamily: "var(--heading)", color: "var(--ink)" }}>{fmt(product.price)}</span>
               {product.original_price && <span style={{ fontSize: 15, color: "var(--ink-muted)", textDecoration: "line-through" }}>{fmt(product.original_price)}</span>}
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 18, fontSize: 12, color: "var(--ink-muted)", fontFamily: "var(--display)", fontWeight: 600 }}>
+            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, marginBottom: 18, fontSize: 12, color: "var(--ink-muted)", fontFamily: "var(--display)", fontWeight: 600 }}>
               <span><span style={{ color: "var(--saffron-deep)", fontWeight: 800 }}>{product.rating}</span>/5 · {product.review_count} reviews</span>
               <span>· {product.sold_count} sold</span>
+              <span style={{ padding: "6px 10px", borderRadius: 99, background: product.stock > 0 ? "#ecfdf5" : "#fee2e2", color: product.stock > 0 ? "#166534" : "#991b1b", fontWeight: 700, border: `1px solid ${product.stock > 0 ? "#bbf7d0" : "#fecaca"}`, fontSize: 11 }}>
+                {product.stock > 0 ? `Stock: ${product.stock}` : "Out of stock"}
+              </span>
             </div>
 
             {(product.weight || product.shelf_life || product.unit) && (
