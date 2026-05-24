@@ -1406,17 +1406,39 @@ function CheckoutScreen({ navigate, showToast, user }) {
               ))}
             </div>
             {payment !== "cod" && sellerInfo && (
-              <div style={{ marginTop: 14, padding: 14, borderRadius: "var(--r-xl)", background: "var(--surface)", border: "1px solid var(--border-soft)" }}>
-                <p style={{ margin: 0, fontSize: 11, fontWeight: 800, color: "var(--ink-muted)", fontFamily: "var(--display)", letterSpacing: ".06em" }}>PAY TO</p>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
-                  <div>
-                    <div style={{ fontWeight: 800, fontSize: 13 }}>{sellerInfo.name || sellerInfo.owner?.full_name || "Seller"}</div>
-                    <div style={{ fontSize: 12, color: "var(--ink-muted)" }}>{sellerInfo.phone || (sellerInfo.owner && sellerInfo.owner.phone) || "No number"}</div>
+              <div style={{ marginTop: 14 }}>
+                {(payment === "gcash" || payment === "maya") ? (
+                  <div style={{ padding: 14, borderRadius: "var(--r-xl)", background: "var(--surface)", border: "1px solid var(--border-soft)" }}>
+                    <p style={{ margin: 0, fontSize: 11, fontWeight: 800, color: "var(--ink-muted)", fontFamily: "var(--display)", letterSpacing: ".06em" }}>PAY WITH</p>
+                    <div style={{ display: "flex", gap: 12, alignItems: "center", marginTop: 10 }}>
+                      <div style={{ width: 140, height: 140, borderRadius: 12, overflow: "hidden", background: "var(--surface-alt)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                        <img alt="QR" src="/qr.png" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 800, fontSize: 13 }}>{sellerInfo.name || sellerInfo.owner?.full_name || "Seller"}</div>
+                        <div style={{ fontSize: 12, color: "var(--ink-muted)", marginTop: 6 }}>{sellerInfo.phone || (sellerInfo.owner && sellerInfo.owner.phone) || "No number"}</div>
+                        <div style={{ fontSize: 12, color: "var(--ink-muted)", marginTop: 10, fontWeight: 700 }}>Exact amount</div>
+                        <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
+                          <button className="btn-outline" onClick={() => setStep(1)} style={{ padding: "10px 14px" }}>← Edit</button>
+                          <button className="btn-primary" onClick={() => setStep(3)} style={{ padding: "10px 14px" }}>Done</button>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                  <div style={{ textAlign: "right" }}>
-                    <div style={{ fontSize: 11, color: "var(--ink-muted)", fontWeight: 700 }}>Exact amount</div>
+                ) : (
+                  <div style={{ padding: 14, borderRadius: "var(--r-xl)", background: "var(--surface)", border: "1px solid var(--border-soft)" }}>
+                    <p style={{ margin: 0, fontSize: 11, fontWeight: 800, color: "var(--ink-muted)", fontFamily: "var(--display)", letterSpacing: ".06em" }}>PAY TO</p>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
+                      <div>
+                        <div style={{ fontWeight: 800, fontSize: 13 }}>{sellerInfo.name || sellerInfo.owner?.full_name || "Seller"}</div>
+                        <div style={{ fontSize: 12, color: "var(--ink-muted)" }}>{sellerInfo.phone || (sellerInfo.owner && sellerInfo.owner.phone) || "No number"}</div>
+                      </div>
+                      <div style={{ textAlign: "right" }}>
+                        <div style={{ fontSize: 11, color: "var(--ink-muted)", fontWeight: 700 }}>Exact amount</div>
+                      </div>
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
             )}
             <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
