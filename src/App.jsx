@@ -2537,12 +2537,32 @@ function LoginScreen({ navigate, showToast }) {
         </form>
         <div className="auth-divider"><span>or continue with</span></div>
         <div style={{ display: "flex", gap: 10 }}>
-          {[["GGL", "Google"], ["APL", "Apple"]].map(([tx, label]) => (
-            <button key={label} style={{ flex: 1, height: 48, border: "1.5px solid var(--border)", borderRadius: "var(--r-xl)", background: "var(--surface)", cursor: "pointer", fontWeight: 700, fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", gap: 10, transition: "all .2s", fontFamily: "var(--display)", color: "var(--ink)" }} onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--saffron)"; e.currentTarget.style.background = "var(--saffron-soft)"; }} onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.background = "var(--surface)"; }}>
-              <span style={{ width: 26, height: 26, borderRadius: "var(--r-xs)", background: "var(--surface-alt)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 900, color: "var(--ink-muted)", letterSpacing: ".04em" }}>{tx}</span>
-              {label}
-            </button>
-          ))}
+          {[["GGL", "Google"], ["FB", "Facebook"]].map(([tx, label]) => {
+            const GoogleIcon = (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M23.2 12.2c0-.8-.1-1.6-.3-2.4H12v4.6h6.2c-.3 1.8-1.6 3.3-3.4 4.1v3h5.4c3.1-2.8 4.9-7 4.9-11.3z" fill="#4285F4" />
+                <path d="M12 24c3.2 0 5.9-1 7.9-2.8l-5.4-3c-1 0.7-2.3 1.1-3.6 1.1-2.8 0-5.2-1.9-6.1-4.5H0.5v2.8C2.6 21.8 7 24 12 24z" fill="#34A853" />
+                <path d="M5.9 14.8c-.2-.7-.4-1.4-.4-2.2s.2-1.5.4-2.2V7.6H0.5A11.9 11.9 0 000 12c0 1.9.4 3.8 1.3 5.6l4.6-2.8z" fill="#FBBC05" />
+                <path d="M12 4.8c1.8 0 3.3.6 4.5 1.8l3.4-3.4C17.9 1.3 15.2 0 12 0 7 0 2.6 2.2.5 5.6l5.4 3.1C6.8 6.7 9.2 4.8 12 4.8z" fill="#EA4335" />
+              </svg>
+            );
+
+            const FacebookIcon = (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect x="0" y="0" width="24" height="24" rx="4" fill="#1877F2" />
+                <path d="M15.5 8.5h-1.3c-.6 0-.8.3-.8.8v1.1h2.1l-.3 2.2h-1.8V20h-2.3v-6.4H9.8v-2.2h1.5V9.9c0-1.5.9-2.3 2.2-2.3.6 0 1.2.1 1.6.2v1.2z" fill="white" />
+              </svg>
+            );
+
+            return (
+              <button key={label} style={{ flex: 1, height: 48, border: "1.5px solid var(--border)", borderRadius: "var(--r-xl)", background: "var(--surface)", cursor: "pointer", fontWeight: 700, fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", gap: 10, transition: "all .2s", fontFamily: "var(--display)", color: "var(--ink)" }} onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--saffron)"; e.currentTarget.style.background = "var(--saffron-soft)"; }} onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.background = "var(--surface)"; }}>
+                <span style={{ width: 26, height: 26, borderRadius: "var(--r-xs)", background: "var(--surface-alt)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 900, color: "var(--ink-muted)", letterSpacing: ".04em" }}>
+                  {tx === "GGL" ? GoogleIcon : FacebookIcon}
+                </span>
+                {label}
+              </button>
+            );
+          })}
         </div>
         <p style={{ textAlign: "center", marginTop: 26, fontSize: 13.5, color: "var(--ink-muted)" }}>
           No account? <button onClick={() => navigate("signup")} style={{ color: "var(--saffron-deep)", fontWeight: 700, background: "none", border: "none", cursor: "pointer", fontFamily: "var(--display)", fontSize: 12.5, letterSpacing: ".03em" }}>SIGN UP</button>
@@ -2568,10 +2588,10 @@ function SignupScreen({ navigate, showToast }) {
   };
 
   const fields = [
-    { key: "name", tx: "ME", placeholder: "Full Name", type: "text" },
-    { key: "phone", tx: "PH", placeholder: "+63 (000) 000-0000", type: "tel" },
-    { key: "email", tx: "@", placeholder: "Email Address", type: "email" },
-    { key: "password", tx: "KEY", placeholder: "Password (min. 8 chars)", type: "password" },
+    { key: "name", placeholder: "Full Name", type: "text" },
+    { key: "phone", placeholder: "+63 (000) 000-0000", type: "tel" },
+    { key: "email", placeholder: "Email Address", type: "email" },
+    { key: "password", placeholder: "Password (min. 8 chars)", type: "password" },
   ];
 
   return (
