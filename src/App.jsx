@@ -2395,7 +2395,8 @@ function SellerDashboard({ navigate, showToast }) {
 }
 
 // ─── ADD PRODUCT SCREEN ──────────────────────────────────────────────────────
-function AddProductScreen({ navigate, showToast }) {
+function AddProductScreen({ navigate, showToast, params }) {
+  const editingProduct = params?.product || null;
   const [form, setForm] = useState({ name: "", slug: "", price: "", original_price: "", stock: 1, unit: "", weight: "", shelf_life: "", category_id: "", is_organic: false, is_featured: false, description: "" });
   const [files, setFiles] = useState([]);
   const [previews, setPreviews] = useState([]);
@@ -2414,6 +2415,25 @@ function AddProductScreen({ navigate, showToast }) {
       if (sessionUser?.user) {
         const { data: stores } = await supabase.from("stores").select("*").eq("owner_id", sessionUser.user.id).limit(1);
         setStore(stores?.[0] || null);
+      }
+      // if editing, prefill form
+      if (editingProduct) {
+        setForm({
+          name: editingProduct.name || "",
+          slug: editingProduct.slug || "",
+          price: editingProduct.price || "",
+          original_price: editingProduct.original_price || "",
+          stock: editingProduct.stock || 0,
+          unit: editingProduct.unit || "",
+          weight: editingProduct.weight || "",
+          shelf_life: editingProduct.shelf_life || "",
+          category_id: editingProduct.category_id || "",
+          is_organic: !!editingProduct.is_organic,
+          is_featured: !!editingProduct.is_featured,
+          description: editingProduct.description || "",
+        });
+        const imgs = editingProduct.images || [];
+        setPreviews((imgs || []).map((u, i) => ({ name: `img${i}`, url: u.url })));
       }
       setLoading(false);
     })();
@@ -2438,14 +2458,28 @@ function AddProductScreen({ navigate, showToast }) {
     if (!form.name || !form.price) return showToast?.("Name and price required", "error");
     if (!store?.id) return showToast?.("Please create a store first", "error");
     setSaving(true);
-    const { data: productData, error: prodErr } = await supabase.from("products").insert({
-      store_id: store.id, category_id: form.category_id || categories?.[0]?.id || null,
-      name: form.name, slug: form.slug || slugify(form.name), description: form.description,
-      price: parseFloat(form.price) || 0, original_price: form.original_price ? parseFloat(form.original_price) : null,
-      stock: parseInt(form.stock) || 0, unit: form.unit || null, weight: form.weight || null,
-      shelf_life: form.shelf_life || null, is_organic: !!form.is_organic, is_featured: !!form.is_featured, is_active: true,
-    }).select().single();
-    if (prodErr) { showToast?.("Failed to add product", "error"); setSaving(false); return; }
+    let productData = null;
+    let prodErr = null;
+    if (editingProduct && editingProduct.id) {
+      const { data, error } = await supabase.from("products").update({
+        category_id: form.category_id || categories?.[0]?.id || null,
+        name: form.name, slug: form.slug || slugify(form.name), description: form.description,
+        price: parseFloat(form.price) || 0, original_price: form.original_price ? parseFloat(form.original_price) : null,
+        stock: parseInt(form.stock) || 0, unit: form.unit || null, weight: form.weight || null,
+        shelf_life: form.shelf_life || null, is_organic: !!form.is_organic, is_featured: !!form.is_featured,
+      }).eq("id", editingProduct.id).select().single();
+      productData = data; prodErr = error;
+    } else {
+      const res = await supabase.from("products").insert({
+        store_id: store.id, category_id: form.category_id || categories?.[0]?.id || null,
+        name: form.name, slug: form.slug || slugify(form.name), description: form.description,
+        price: parseFloat(form.price) || 0, original_price: form.original_price ? parseFloat(form.original_price) : null,
+        stock: parseInt(form.stock) || 0, unit: form.unit || null, weight: form.weight || null,
+        shelf_life: form.shelf_life || null, is_organic: !!form.is_organic, is_featured: !!form.is_featured, is_active: true,
+      }).select().single();
+      productData = res.data; prodErr = res.error;
+    }
+    if (prodErr) { showToast?.(editingProduct ? "Failed to update product" : "Failed to add product", "error"); setSaving(false); return; }
     for (let i = 0; i < files.length; i++) {
       const f = files[i];
       const path = `${productData.id}/${Date.now()}_${f.name}`;
@@ -2454,7 +2488,7 @@ function AddProductScreen({ navigate, showToast }) {
       const { data: urlData } = supabase.storage.from("product-images").getPublicUrl(path);
       if (urlData?.publicUrl) await supabase.from("product_images").insert({ product_id: productData.id, url: urlData.publicUrl, sort_order: i, is_primary: i === 0 });
     }
-    showToast?.("Product added!", "success");
+    showToast?.(editingProduct ? "Product updated!" : "Product added!", "success");
     navigate("seller-dashboard");
     setSaving(false);
   };
@@ -2543,7 +2577,7 @@ function AddProductScreen({ navigate, showToast }) {
             )}
           </div>
           <div style={{ display: "flex", gap: 10, paddingTop: 4 }}>
-            <button type="submit" className="btn-gold" disabled={saving} style={{ flex: 1 }}>{saving ? "ADDING..." : "ADD PRODUCT"}</button>
+            <button type="submit" className="btn-gold" disabled={saving} style={{ flex: 1 }}>{saving ? (editingProduct ? "SAVING..." : "ADDING...") : (editingProduct ? "SAVE CHANGES" : "ADD PRODUCT")}</button>
             <button type="button" className="btn-outline" onClick={() => navigate("seller-dashboard")} style={{ flex: "none", padding: "0 20px" }}>CANCEL</button>
           </div>
         </form>
