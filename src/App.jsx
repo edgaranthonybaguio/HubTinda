@@ -1356,19 +1356,17 @@ function CheckoutScreen({ navigate, showToast, user }) {
       product_image: i.product.images?.find(img => img.is_primary)?.url || null,
       unit_price: i.product.price, quantity: i.quantity,
     })));
-    // decrement stock and increment sold_count for each product
+    // decrement stock to reserve inventory until delivery
     try {
       const productIds = cartItems.map(i => i.product.id);
-      const { data: prods } = await supabase.from("products").select("id,stock,sold_count").in("id", productIds);
+      const { data: prods } = await supabase.from("products").select("id,stock").in("id", productIds);
       for (const item of cartItems) {
-        const p = prods.find(x => x.id === item.product.id) || { stock: 0, sold_count: 0 };
+        const p = prods.find(x => x.id === item.product.id) || { stock: 0 };
         const newStock = Math.max(0, (p.stock || 0) - item.quantity);
-        const newSold = (p.sold_count || 0) + item.quantity;
-        await supabase.from("products").update({ stock: newStock, sold_count: newSold }).eq("id", item.product.id);
+        await supabase.from("products").update({ stock: newStock }).eq("id", item.product.id);
       }
     } catch (e) {
-      // non-fatal, order created but inventory update failed
-      console.error("Inventory update failed", e);
+      console.error("Inventory reserve update failed", e);
     }
     await supabase.from("cart_items").delete().eq("user_id", user.id);
     await supabase.from("order_status_history").insert({ order_id: order.id, status: "pending" });
@@ -1667,6 +1665,10 @@ function OrderTrackingScreen({ navigate, params, showToast }) {
   const [loading, setLoading] = useState(true);
   const [profileRole, setProfileRole] = useState(null);
   const [sellerStoreId, setSellerStoreId] = useState(null);
+  const [currentUserId, setCurrentUserId] = useState(null);
+  const [orderReviews, setOrderReviews] = useState([]);
+  const [reviewInputs, setReviewInputs] = useState({});
+  const [submittingReview, setSubmittingReview] = useState(null);
 
   useEffect(() => {
     supabase.auth.getUser().then(async ({ data: { user } }) => {
@@ -1710,6 +1712,17 @@ function OrderTrackingScreen({ navigate, params, showToast }) {
     if (newStatus === "delivered") updateData.delivered_at = new Date().toISOString();
     const { data: updated, error } = await supabase.from("orders").update(updateData).eq("id", order.id).select().single();
     if (error) { showToast("Failed to update status", "error"); return; }
+    if (newStatus === "delivered" && order.status !== "delivered") {
+      try {
+        for (const item of order.items || []) {
+          const { data: product } = await supabase.from("products").select("sold_count").eq("id", item.product_id).single();
+          const currentSold = product?.sold_count || 0;
+          await supabase.from("products").update({ sold_count: currentSold + (item.quantity || 0) }).eq("id", item.product_id);
+        }
+      } catch (e) {
+        console.error("Failed to update sold_count on delivery", e);
+      }
+    }
     await supabase.from("order_status_history").insert({ order_id: order.id, status: newStatus, created_by: user.id });
     setOrder(updated);
     setHistory(h => [...h, { order_id: order.id, status: newStatus, created_by: user.id, created_at: new Date().toISOString() }]);
@@ -2203,7 +2216,7 @@ function SellerDashboard({ navigate, showToast }) {
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 11, marginBottom: 26 }}>
                   {quickActions.map((qa, i) => (
                     <button key={qa.label} className="qa-card" onClick={qa.action} style={{ animationDelay: `${i * .06}s` }}>
-                      <div className="qa-card-icon" style={{ background: qa.color === "var(--ink)" ? "var(--ink)" : qa.color + "15", color: qa.color === "var(--ink)" ? "var(--saffron-glow)" : qa.color }}>
+                      <div className="qa-card-icon tx-icon" style={{ background: qa.color === "var(--ink)" ? "var(--ink)" : qa.color + "15", color: qa.color === "var(--ink)" ? "var(--saffron-glow)" : qa.color }}>
                         {qa.tx}
                       </div>
                       <div>
