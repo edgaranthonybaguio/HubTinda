@@ -2636,8 +2636,8 @@ function OnboardingScreen({ navigate, showToast }) {
   };
 
   const roles = [
-    { r: "buyer", tx: "BGS", title: "I want to Shop", desc: "Browse and discover local artisan products from verified Filipino sellers.", bg: "var(--saffron-soft)" },
-    { r: "seller", tx: "STR", title: "I want to Sell", desc: "Set up your online store, list products, and reach thousands of buyers.", bg: "#f0fdf4" },
+    { r: "buyer",  title: "I want to Shop", desc: "Browse and discover local artisan products from verified Filipino sellers.", bg: "var(--saffron-soft)" },
+    { r: "seller", title: "I want to Sell", desc: "Set up your online store, list products, and reach thousands of buyers.", bg: "#f0fdf4" },
   ];
 
   return (
