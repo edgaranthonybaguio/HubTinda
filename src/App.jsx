@@ -1459,7 +1459,9 @@ function CheckoutScreen({ navigate, showToast, user }) {
             )}
             <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
               <button className="btn-outline" onClick={() => setStep(1)} style={{ flex: 1, height: 44, fontSize: 13 }}>← Back</button>
-              <button className="btn-primary" onClick={() => setStep(3)} style={{ flex: 1 }}><span>Review Order →</span></button>
+              {!(paymentStarted && (payment === "gcash" || payment === "maya")) && (
+                <button className="btn-primary" onClick={() => setStep(3)} style={{ flex: 1 }}><span>Review Order →</span></button>
+              )}
             </div>
           </div>
         )}
