@@ -2697,7 +2697,7 @@ function LoginScreen({ navigate, showToast }) {
         <h1 style={{ fontSize: 26, fontWeight: 700, fontFamily: "var(--heading)", color: "var(--ink)", margin: "0 0 5px" }}>Welcome Back</h1>
         <p style={{ color: "var(--ink-muted)", fontSize: 13.5, margin: "0 0 32px" }}>Log in to your Tindahub account</p>
         <form onSubmit={handle} style={{ display: "flex", flexDirection: "column", gap: 13 }}>
-          {[{ placeholder: "Email address", value: email, onChange: e => setEmail(e.target.value), type: "email", tx: "@" }, { placeholder: "Password", value: pw, onChange: e => setPw(e.target.value), type: showPw ? "text" : "password", tx: "KEY" }].map((f, i) => (
+          {[{ placeholder: "Email address", value: email, onChange: e => setEmail(e.target.value), type: "email"}, { placeholder: "Password", value: pw, onChange: e => setPw(e.target.value), type: showPw ? "text" : "password",}].map((f, i) => (
             <div key={i} style={{ position: "relative" }}>
               <span style={{ position: "absolute", left: 13, top: "50%", transform: "translateY(-50%)", fontFamily: "var(--display)", fontSize: 9.5, fontWeight: 800, color: "var(--ink-muted)", letterSpacing: ".04em" }}>{f.tx}</span>
               <input className="th-input" type={f.type} placeholder={f.placeholder} value={f.value} onChange={f.onChange} required style={{ paddingRight: f.type?.includes("password") || f.value?.includes("@") ? 46 : 14 }} />
