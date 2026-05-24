@@ -664,11 +664,11 @@ function BottomNavBar({ screen, navigate, cartCount }) {
   const isAuth = ["login", "signup", "onboarding"].includes(screen);
   if (isAuth) return null;
   const tabs = [
-    { id: "home", tx: "HM", label: "Home" },
-    { id: "search", tx: "SR", label: "Browse" },
-    { id: "cart", tx: "BG", label: "Bag" },
-    { id: "orders", tx: "ORD", label: "Orders" },
-    { id: "profile", tx: "ME", label: "Profile" },
+    { id: "home", label: "Home" },
+    { id: "search",label: "Browse" },
+    { id: "cart", label: "Bag" },
+    { id: "orders", label: "Orders" },
+    { id: "profile", label: "Profile" },
   ];
   return (
     <nav className="th-bottom-nav">
