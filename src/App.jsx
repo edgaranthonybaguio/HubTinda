@@ -1329,6 +1329,20 @@ function CheckoutScreen({ navigate, showToast, user }) {
     if (invalidItem) { showToast("One or more items unavailable", "error"); setLoading(false); return; }
     const storeId = cartItems[0]?.product?.store_id;
     if (cartItems.some(i => i.product.store_id !== storeId)) { showToast("Checkout one store at a time", "error"); setLoading(false); return; }
+    // validate stock availability before creating order
+    try {
+      const productIds = cartItems.map(i => i.product.id).filter(Boolean);
+      if (productIds.length > 0) {
+        const { data: prods } = await supabase.from("products").select("id,stock").in("id", productIds);
+        const short = cartItems.find(i => {
+          const p = prods.find(x => x.id === i.product.id);
+          return !p || (p.stock || 0) < i.quantity;
+        });
+        if (short) { showToast(`Product "${short.product.name}" is out of stock or has insufficient quantity`, "error"); setLoading(false); return; }
+      }
+    } catch (e) {
+      console.error("Stock check failed", e);
+    }
     const { data: order, error } = await supabase.from("orders").insert([{
       buyer_id: user.id, store_id: storeId, delivery_address_id: selectedAddr || null,
       payment_method: payment || "cod", subtotal, delivery_fee: delivery, total, estimated_delivery: "30-45 mins",
@@ -1339,6 +1353,20 @@ function CheckoutScreen({ navigate, showToast, user }) {
       product_image: i.product.images?.find(img => img.is_primary)?.url || null,
       unit_price: i.product.price, quantity: i.quantity,
     })));
+    // decrement stock and increment sold_count for each product
+    try {
+      const productIds = cartItems.map(i => i.product.id);
+      const { data: prods } = await supabase.from("products").select("id,stock,sold_count").in("id", productIds);
+      for (const item of cartItems) {
+        const p = prods.find(x => x.id === item.product.id) || { stock: 0, sold_count: 0 };
+        const newStock = Math.max(0, (p.stock || 0) - item.quantity);
+        const newSold = (p.sold_count || 0) + item.quantity;
+        await supabase.from("products").update({ stock: newStock, sold_count: newSold }).eq("id", item.product.id);
+      }
+    } catch (e) {
+      // non-fatal, order created but inventory update failed
+      console.error("Inventory update failed", e);
+    }
     await supabase.from("cart_items").delete().eq("user_id", user.id);
     await supabase.from("order_status_history").insert({ order_id: order.id, status: "pending" });
     setLoading(false);
@@ -1857,14 +1885,28 @@ function ProfileScreen({ navigate, showToast, setUser }) {
     showToast?.("Profile saved");
     if (setUser) setUser(prev => prev ? { ...prev, avatar_url: formData.avatar_url } : prev);
     setEditing(false);
-    fetchProfile();
+    // ensure profile address is saved as a delivery address
+    try {
+      if (formData.address || formData.city || formData.province) {
+        const { data: existing } = await supabase.from("delivery_addresses").select("*").eq("user_id", user.id).maybeSingle();
+        // only insert if no existing addresses or no matching address_line
+        const { data: match } = await supabase.from("delivery_addresses").select("*").eq("user_id", user.id).eq("address_line", formData.address || "").maybeSingle();
+        if (!match) {
+          const addrObj = { user_id: user.id, label: "HOME", full_name: formData.full_name || user.user_metadata?.full_name || "", phone: formData.phone || "", address_line: formData.address || "", city: formData.city || "", province: formData.province || "", zip_code: formData.zip_code || "", is_default: !existing };
+          await supabase.from("delivery_addresses").insert(addrObj).maybeSingle();
+        }
+      }
+    } catch (e) {
+      /* ignore address save errors */
+    }
+    await fetchProfile();
     setSaving(false);
   };
 
   const signOut = async () => { await supabase.auth.signOut(); navigate("login"); };
   const completion = calcCompletion();
 
-  const menuItems = [
+  const _menuItems = [
     { label: "My Orders", sub: "Track & manage orders", screen: "orders" },
     { label: "Wallet", sub: "Balance & transactions", screen: "wallet" },
     { label: "Saved Addresses", sub: "Delivery locations", screen: "addresses" },
@@ -1872,6 +1914,7 @@ function ProfileScreen({ navigate, showToast, setUser }) {
     { label: "My Store", sub: "Manage your products", screen: "seller-dashboard" },
     { label: "Help Center", sub: "FAQs & support", screen: "help" },
   ];
+  const menuItems = _menuItems.filter(mi => !(mi.screen === "seller-dashboard" && profile?.role !== "seller"));
 
   return (
     <div className="page-enter">
@@ -1975,6 +2018,19 @@ function ProfileScreen({ navigate, showToast, setUser }) {
                 ))}
               </div>
             </div>
+
+            {profile?.role !== "seller" && (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
+                <div style={{ background: "var(--surface)", borderRadius: "var(--r-md)", padding: 12 }}>
+                  <p style={{ fontSize: 11, fontWeight: 800, color: "var(--ink-muted)", margin: 0 }}>Payment Methods</p>
+                  <p style={{ marginTop: 8, color: "var(--ink)", fontWeight: 700 }}>Manage your cards & e-wallets</p>
+                </div>
+                <div style={{ background: "var(--surface)", borderRadius: "var(--r-md)", padding: 12 }}>
+                  <p style={{ fontSize: 11, fontWeight: 800, color: "var(--ink-muted)", margin: 0 }}>Help Center</p>
+                  <p style={{ marginTop: 8, color: "var(--ink)", fontWeight: 700 }}>FAQs and support options</p>
+                </div>
+              </div>
+            )}
 
             {menuItems.map(item => (
               <button key={item.label} onClick={() => navigate(item.screen)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 14, padding: "13px 16px", background: "var(--surface)", borderRadius: "var(--r-xl)", border: "1px solid var(--border-soft)", cursor: "pointer", marginBottom: 9, transition: "all .18s", fontFamily: "var(--sans)", textAlign: "left" }} onMouseEnter={e => e.currentTarget.style.transform = "translateX(4px)"} onMouseLeave={e => e.currentTarget.style.transform = "translateX(0)"}>
@@ -2269,6 +2325,7 @@ function SellerDashboard({ navigate, showToast }) {
                         </div>
                       </div>
                       <div style={{ display: "flex", gap: 7, flexShrink: 0 }}>
+                        <button onClick={() => navigate("add-product", { product: p })} style={{ height: 32, padding: "0 10px", borderRadius: "var(--r-md)", border: "1.5px solid var(--border)", background: "var(--surface)", color: "var(--ink)", cursor: "pointer", fontFamily: "var(--display)", fontWeight: 800, fontSize: 9, letterSpacing: ".06em", transition: "all .18s" }}>EDIT</button>
                         <button onClick={() => toggleProductActive(p.id, p.is_active)} style={{ height: 32, padding: "0 10px", borderRadius: "var(--r-md)", border: `1.5px solid ${p.is_active ? "var(--border)" : "rgba(245,166,35,.4)"}`, background: p.is_active ? "var(--surface-alt)" : "var(--saffron-soft)", color: p.is_active ? "var(--ink-muted)" : "var(--saffron-deep)", cursor: "pointer", fontFamily: "var(--display)", fontWeight: 800, fontSize: 9, letterSpacing: ".06em", transition: "all .18s" }}>
                           {p.is_active ? "HIDE" : "SHOW"}
                         </button>
