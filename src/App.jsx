@@ -964,6 +964,8 @@ function ProductScreen({ params, navigate, showToast }) {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { showToast("Please login first", "error"); return; }
+      if (product.stock <= 0) { showToast("Out of stock", "error"); return; }
+      if (qty > product.stock) setQty(product.stock);
       setAddingCart(true);
       const { data: existing } = await supabase.from("cart_items").select("*").eq("user_id", user.id).eq("product_id", product.id).maybeSingle();
       if (existing) {
@@ -1057,19 +1059,29 @@ function ProductScreen({ params, navigate, showToast }) {
               </div>
             ))}
 
-            <div style={{ marginTop: 18, display: "flex", alignItems: "center", gap: 10 }}>
-              <div className="qty-ctrl">
-                <button className="qty-btn" onClick={() => setQty(Math.max(1, qty - 1))}>−</button>
-                <span className="qty-val">{qty}</span>
-                <button className="qty-btn" onClick={() => setQty(Math.min(product.stock, qty + 1))}>+</button>
+            {product.stock > 0 ? (
+              <div style={{ marginTop: 18, display: "flex", alignItems: "center", gap: 10 }}>
+                <div className="qty-ctrl">
+                  <button className="qty-btn" onClick={() => setQty(Math.max(1, qty - 1))}>−</button>
+                  <span className="qty-val">{qty}</span>
+                  <button className="qty-btn" onClick={() => setQty(Math.min(product.stock, qty + 1))}>+</button>
+                </div>
+                <button onClick={addToCart} disabled={addingCart} style={{ flex: 1, height: 46, background: "var(--saffron-soft)", color: "var(--saffron-deep)", borderRadius: "var(--r-lg)", border: "1.5px solid rgba(245,166,35,.3)", fontWeight: 800, fontSize: 12.5, cursor: "pointer", fontFamily: "var(--display)", letterSpacing: ".04em" }}>
+                  {addingCart ? "ADDING..." : "+ BAG"}
+                </button>
+                <button onClick={() => navigate("cart")} style={{ flex: 1, height: 46, background: "var(--ink)", color: "white", borderRadius: "var(--r-lg)", border: "none", fontWeight: 800, fontSize: 12.5, cursor: "pointer", fontFamily: "var(--display)", letterSpacing: ".04em", transition: "all .2s" }} onMouseEnter={e => e.currentTarget.style.background = "var(--saffron-deep)"} onMouseLeave={e => e.currentTarget.style.background = "var(--ink)"}>
+                  BUY NOW →
+                </button>
               </div>
-              <button onClick={addToCart} disabled={addingCart} style={{ flex: 1, height: 46, background: "var(--saffron-soft)", color: "var(--saffron-deep)", borderRadius: "var(--r-lg)", border: "1.5px solid rgba(245,166,35,.3)", fontWeight: 800, fontSize: 12.5, cursor: "pointer", fontFamily: "var(--display)", letterSpacing: ".04em" }}>
-                {addingCart ? "ADDING..." : "+ BAG"}
-              </button>
-              <button onClick={() => navigate("cart")} style={{ flex: 1, height: 46, background: "var(--ink)", color: "white", borderRadius: "var(--r-lg)", border: "none", fontWeight: 800, fontSize: 12.5, cursor: "pointer", fontFamily: "var(--display)", letterSpacing: ".04em", transition: "all .2s" }} onMouseEnter={e => e.currentTarget.style.background = "var(--saffron-deep)"} onMouseLeave={e => e.currentTarget.style.background = "var(--ink)"}>
-                BUY NOW →
-              </button>
-            </div>
+            ) : (
+              <div style={{ marginTop: 18, display: "flex", gap: 10, alignItems: "center" }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 14, fontWeight: 900, color: "#7f1d1d" }}>OUT OF STOCK</div>
+                  <div style={{ fontSize: 12, color: "var(--ink-muted)", marginTop: 6 }}>This item is currently unavailable.</div>
+                </div>
+                <button disabled style={{ flex: 1, height: 46, background: "#f3f4f6", color: "#9ca3af", borderRadius: "var(--r-lg)", border: "1px solid #e5e7eb", fontWeight: 800, fontSize: 12.5 }}>Out of stock</button>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -2246,7 +2258,7 @@ function SellerDashboard({ navigate, showToast }) {
                         </div>
                         <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 11, color: "var(--ink-muted)", fontFamily: "var(--display)" }}>
                           <span style={{ fontWeight: 700, color: "var(--ink)" }}>{fmt(p.price)}</span>
-                          <span>STK: {p.stock}</span>
+                          {p.stock > 0 ? <span>STK: {p.stock}</span> : <span style={{ color: "#7f1d1d", fontWeight: 800 }}>OUT OF STOCK</span>}
                           <span>SOLD: {p.sold_count || 0}</span>
                           <span>★ {p.rating || 0}</span>
                         </div>
