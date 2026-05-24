@@ -1228,6 +1228,7 @@ function CartScreen({ navigate, showToast, user }) {
 function CheckoutScreen({ navigate, showToast, user }) {
   const [step, setStep] = useState(1);
   const [payment, setPayment] = useState("gcash");
+  const [paymentStarted, setPaymentStarted] = useState(false);
   const [loading, setLoading] = useState(false);
   const isSeller = user?.role === "seller";
   const [addresses, setAddresses] = useState([]);
@@ -1288,6 +1289,9 @@ function CheckoutScreen({ navigate, showToast, user }) {
       }
     });
   }, [isSeller, navigate, showToast]);
+
+  // reset payment flow when method changes
+  useEffect(() => { setPaymentStarted(false); }, [payment]);
 
   const handleContinue = () => {
     const hasManual = deliveryFullName.trim() && deliveryPhone.trim() && deliveryAddressLine.trim() && deliveryCity.trim() && deliveryProvince.trim();
@@ -1408,23 +1412,35 @@ function CheckoutScreen({ navigate, showToast, user }) {
             {payment !== "cod" && sellerInfo && (
               <div style={{ marginTop: 14 }}>
                 {(payment === "gcash" || payment === "maya") ? (
-                  <div style={{ padding: 14, borderRadius: "var(--r-xl)", background: "var(--surface)", border: "1px solid var(--border-soft)" }}>
-                    <p style={{ margin: 0, fontSize: 11, fontWeight: 800, color: "var(--ink-muted)", fontFamily: "var(--display)", letterSpacing: ".06em" }}>PAY WITH</p>
-                    <div style={{ display: "flex", gap: 12, alignItems: "center", marginTop: 10 }}>
-                      <div style={{ width: 140, height: 140, borderRadius: 12, overflow: "hidden", background: "var(--surface-alt)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                        <img alt="QR" src="/qr.png" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  !paymentStarted ? (
+                    <div style={{ padding: 14, borderRadius: "var(--r-xl)", background: "var(--surface)", border: "1px solid var(--border-soft)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <div>
+                        <p style={{ margin: 0, fontSize: 11, fontWeight: 800, color: "var(--ink-muted)", fontFamily: "var(--display)", letterSpacing: ".06em" }}>PAY WITH</p>
+                        <p style={{ margin: "6px 0 0", fontSize: 13, fontWeight: 700 }}>{payment === "gcash" ? "GCash" : "Maya"}</p>
                       </div>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 800, fontSize: 13 }}>{sellerInfo.name || sellerInfo.owner?.full_name || "Seller"}</div>
-                        <div style={{ fontSize: 12, color: "var(--ink-muted)", marginTop: 6 }}>{sellerInfo.phone || (sellerInfo.owner && sellerInfo.owner.phone) || "No number"}</div>
-                        <div style={{ fontSize: 12, color: "var(--ink-muted)", marginTop: 10, fontWeight: 700 }}>Exact amount</div>
-                        <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
-                          <button className="btn-outline" onClick={() => setStep(1)} style={{ padding: "10px 14px" }}>← Edit</button>
-                          <button className="btn-primary" onClick={() => setStep(3)} style={{ padding: "10px 14px" }}>Done</button>
+                      <div>
+                        <button className="btn-primary" onClick={() => setPaymentStarted(true)} style={{ padding: "10px 14px" }}>Pay Now</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ padding: 14, borderRadius: "var(--r-xl)", background: "var(--surface)", border: "1px solid var(--border-soft)" }}>
+                      <p style={{ margin: 0, fontSize: 11, fontWeight: 800, color: "var(--ink-muted)", fontFamily: "var(--display)", letterSpacing: ".06em" }}>PAY WITH</p>
+                      <div style={{ display: "flex", gap: 12, alignItems: "center", marginTop: 10 }}>
+                        <div style={{ width: 140, height: 140, borderRadius: 12, overflow: "hidden", background: "var(--surface-alt)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                          <img alt="QR" src="/qr.png" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 800, fontSize: 13 }}>{sellerInfo.name || sellerInfo.owner?.full_name || "Seller"}</div>
+                          <div style={{ fontSize: 12, color: "var(--ink-muted)", marginTop: 6 }}>{sellerInfo.phone || (sellerInfo.owner && sellerInfo.owner.phone) || "No number"}</div>
+                          <div style={{ fontSize: 12, color: "var(--ink-muted)", marginTop: 10, fontWeight: 700 }}>Exact amount</div>
+                          <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
+                            <button className="btn-outline" onClick={() => { setPaymentStarted(false); }} style={{ padding: "10px 14px" }}>← Edit</button>
+                            <button className="btn-primary" onClick={() => setStep(3)} style={{ padding: "10px 14px" }}>Review Order</button>
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
+                  )
                 ) : (
                   <div style={{ padding: 14, borderRadius: "var(--r-xl)", background: "var(--surface)", border: "1px solid var(--border-soft)" }}>
                     <p style={{ margin: 0, fontSize: 11, fontWeight: 800, color: "var(--ink-muted)", fontFamily: "var(--display)", letterSpacing: ".06em" }}>PAY TO</p>
