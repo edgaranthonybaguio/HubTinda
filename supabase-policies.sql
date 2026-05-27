@@ -78,6 +78,15 @@ CREATE POLICY cart_items_user_policy
   USING (user_id = auth.uid())
   WITH CHECK (user_id = auth.uid());
 
+-- 5.1) Delivery addresses: users can manage their own shipping addresses
+ALTER TABLE public.delivery_addresses ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY delivery_addresses_owner
+  ON public.delivery_addresses
+  FOR ALL
+  USING (user_id = auth.uid())
+  WITH CHECK (user_id = auth.uid());
+
 -- 6) Orders: buyers can create/select their orders; store owners can view orders for their store
 ALTER TABLE public.orders ENABLE ROW LEVEL SECURITY;
 
@@ -160,7 +169,155 @@ CREATE POLICY wallet_txns_owner_select
     )
   );
 
+CREATE POLICY wallet_txns_owner_insert
+  ON public.wallet_transactions
+  FOR INSERT
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.wallets w WHERE w.id = public.wallet_transactions.wallet_id AND w.user_id = auth.uid()
+    )
+  );
+
 -- Notes:
 -- - Paste each block into Supabase SQL editor and run. Do not include backslashes or escaped quotes.
 -- - Adjust policies if you have different auth schemes or need public read access disabled.
 -- - If your storage buckets are private, switch the add-product upload flow to use signed URLs.
+
+-- 9) Wallet checkout transaction: create order, order items, deduct wallet, record transaction, and clear cart in one atomic request.
+ALTER TYPE public.payment_method ADD VALUE IF NOT EXISTS 'wallet';
+ALTER TYPE public.transaction_type ADD VALUE IF NOT EXISTS 'credit';
+ALTER TYPE public.transaction_type ADD VALUE IF NOT EXISTS 'debit';
+ALTER TYPE public.transaction_status ADD VALUE IF NOT EXISTS 'completed';
+
+CREATE OR REPLACE FUNCTION public.create_wallet_order(
+  store_id uuid,
+  delivery_address_id uuid,
+  payment_method text,
+  subtotal numeric,
+  delivery_fee numeric,
+  total numeric,
+  estimated_delivery text,
+  product_items jsonb
+)
+RETURNS TABLE(order_id uuid, order_number text)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET row_security = off
+AS $$
+DECLARE
+  v_wallet public.wallets%ROWTYPE;
+  v_seller_wallet public.wallets%ROWTYPE;
+  v_order public.orders%ROWTYPE;
+  v_seller_id uuid;
+  item jsonb;
+BEGIN
+  SELECT * INTO v_wallet
+  FROM public.wallets
+  WHERE user_id = auth.uid()
+  FOR UPDATE;
+
+  IF v_wallet IS NULL THEN
+    RAISE EXCEPTION 'Wallet not found';
+  END IF;
+
+  IF v_wallet.balance < total THEN
+    RAISE EXCEPTION 'Insufficient wallet balance';
+  END IF;
+
+  SELECT owner_id INTO v_seller_id
+  FROM public.stores
+  WHERE id = store_id;
+
+  IF v_seller_id IS NULL THEN
+    RAISE EXCEPTION 'Store not found';
+  END IF;
+
+  SELECT * INTO v_seller_wallet
+  FROM public.wallets
+  WHERE user_id = v_seller_id
+  FOR UPDATE;
+
+  IF v_seller_wallet IS NULL THEN
+    INSERT INTO public.wallets(user_id, balance, currency)
+    VALUES (v_seller_id, 0, 'PHP')
+    RETURNING * INTO v_seller_wallet;
+  END IF;
+
+  UPDATE public.wallets
+  SET balance = v_wallet.balance - total
+  WHERE id = v_wallet.id;
+
+  UPDATE public.wallets
+  SET balance = v_seller_wallet.balance + total
+  WHERE id = v_seller_wallet.id;
+
+  INSERT INTO public.orders(
+    buyer_id, store_id, delivery_address_id,
+    payment_method, payment_status, subtotal,
+    delivery_fee, total, estimated_delivery
+  ) VALUES (
+    auth.uid(), store_id, delivery_address_id,
+    payment_method::public.payment_method, 'paid', subtotal,
+    delivery_fee, total, estimated_delivery
+  ) RETURNING * INTO v_order;
+
+  FOR item IN SELECT * FROM jsonb_array_elements(product_items) LOOP
+    INSERT INTO public.order_items(
+      order_id, product_id, product_name, product_image,
+      unit_price, quantity
+    ) VALUES (
+      v_order.id,
+      (item->>'product_id')::uuid,
+      item->>'product_name',
+      NULLIF(item->>'product_image',''),
+      (item->>'unit_price')::numeric,
+      (item->>'quantity')::integer
+    );
+
+    UPDATE public.products
+    SET stock = GREATEST(stock - (item->>'quantity')::integer, 0)
+    WHERE id = (item->>'product_id')::uuid;
+  END LOOP;
+
+  INSERT INTO public.wallet_transactions(
+    wallet_id, type, status,
+    amount, balance_before, balance_after,
+    reference, description, order_id
+  ) VALUES (
+    v_wallet.id,
+    'debit'::public.transaction_type,
+    'completed'::public.transaction_status,
+    total,
+    v_wallet.balance,
+    v_wallet.balance - total,
+    concat('order_', v_order.id),
+    concat('Payment for order ', v_order.order_number),
+    v_order.id
+  );
+
+  INSERT INTO public.wallet_transactions(
+    wallet_id, type, status,
+    amount, balance_before, balance_after,
+    reference, description, order_id
+  ) VALUES (
+    v_seller_wallet.id,
+    'credit'::public.transaction_type,
+    'completed'::public.transaction_status,
+    total,
+    v_seller_wallet.balance,
+    v_seller_wallet.balance + total,
+    concat('order_', v_order.id, '_seller'),
+    concat('Seller payout for order ', v_order.order_number),
+    v_order.id
+  );
+
+  INSERT INTO public.order_status_history(order_id, status)
+  VALUES (v_order.id, 'pending');
+
+  DELETE FROM public.cart_items WHERE user_id = auth.uid();
+
+  RETURN QUERY SELECT v_order.id, v_order.order_number;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.create_wallet_order(uuid, uuid, text, numeric, numeric, numeric, text, jsonb) TO authenticated;

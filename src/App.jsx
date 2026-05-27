@@ -19,6 +19,9 @@ const CSS = `
   color:var(--ink2);background:var(--bg);
   -webkit-font-smoothing:antialiased;
 }
+
+
+
 body{background:var(--bg);overflow-x:hidden;}
 h1,h2,h3,h4{color:var(--ink);}
 button{cursor:pointer;}
@@ -422,6 +425,52 @@ async function fetchOrderItems(orderIds, storeProductIds) {
   }
   return {};
 }
+
+// ── SHOP / PUBLIC STORE PAGE ─────────────────────────────────────────────────
+function ShopScreen({ params, navigate, showToast }) {
+  const [store, setStore] = useState(null);
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      const storeId = params?.storeId || params?.id;
+      if (!storeId) { setLoading(false); return; }
+      const { data: s } = await supabase.from("stores").select("*, owner:profiles(id,full_name,avatar_url)").eq("id", storeId).maybeSingle();
+      const { data: prods } = await supabase.from("products").select("*,images:product_images(url,is_primary)").eq("store_id", storeId).eq("is_active", true).order("created_at", { ascending: false });
+      setStore(s);
+      setProducts(prods || []);
+      setLoading(false);
+    })();
+  }, [params?.storeId, params?.id]);
+
+  if (loading) return <Spinner />;
+  if (!store) return <EmptyState icon="🏪" title="Store not found" desc="This shop may no longer be available." action={<button className="btn btn-primary" onClick={() => navigate("home")}>Back to Home</button>} />;
+
+  return (
+    <div style={{ paddingBottom: 120 }}>
+      <div className="page-header">
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ width: 72, height: 72, borderRadius: 16, overflow: "hidden", background: "var(--surface3)" }}>
+            {store.logo_url ? <img src={store.logo_url} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="" /> : <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", fontSize: 28 }}>{(store.name||"S")[0]}</div>}
+          </div>
+          <div>
+            <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800 }}>{store.name}</h2>
+            <p style={{ margin: 0, fontSize: 13, color: "var(--ink3)" }}>{store.city}{store.province ? ` · ${store.province}` : ""}</p>
+          </div>
+        </div>
+      </div>
+      <div style={{ padding: "16px 20px" }}>
+        {products.length === 0 ? <EmptyState icon="📦" title="No products" desc="This shop hasn't listed any products yet." /> : (
+          <div className="prod-grid">
+            {products.map((p, i) => <ProductCard key={p.id} product={{ ...p, image_url: p.images?.find(x=>x.is_primary)?.url || p.images?.[0]?.url || p.image_url, store: { id: store.id, name: store.name, city: store.city } }} onClick={() => navigate("product", { id: p.id })} delay={i * .03} />)}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 
 function Img({ src, alt, style, className }) {
   const [err, setErr] = useState(false);
@@ -1112,13 +1161,13 @@ function ProductScreen({ params, navigate, showToast }) {
       <div style={{ padding: "16px 20px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
           <div style={{ width: 32, height: 32, background: "var(--orange-pale)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 12, color: "var(--orange)" }}>
-            {(product.store?.name || "S")[0]}
-          </div>
-          <div>
-            <span style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)" }}>{product.store?.name}</span>
-            {product.store?.city && <span style={{ fontSize: 11, color: "var(--ink3)", marginLeft: 6 }}>· {product.store.city}</span>}
-          </div>
-          <button style={{ marginLeft: "auto", fontSize: 12, fontWeight: 700, color: "var(--orange)", background: "var(--orange-pale)", border: "1px solid var(--orange-light)", borderRadius: "var(--r-pill)", padding: "5px 12px", cursor: "pointer" }}>Visit Store</button>
+              {(product.store?.name || "S")[0]}
+            </div>
+            <div>
+              <span style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)" }}>{product.store?.name}</span>
+              {product.store?.city && <span style={{ fontSize: 11, color: "var(--ink3)", marginLeft: 6 }}>· {product.store.city}</span>}
+            </div>
+            <button onClick={() => navigate("shop", { storeId: product.store?.id })} style={{ marginLeft: "auto", fontSize: 12, fontWeight: 700, color: "var(--orange)", background: "var(--orange-pale)", border: "1px solid var(--orange-light)", borderRadius: "var(--r-pill)", padding: "5px 12px", cursor: "pointer" }}>Visit Store</button>
         </div>
 
         <h1 style={{ fontSize: 20, fontWeight: 800, marginBottom: 8, lineHeight: 1.2 }}>{product.name}</h1>
@@ -1369,7 +1418,7 @@ function CartScreen({ navigate, showToast }) {
 }
 
 // ── CHECKOUT (Image 1 style) ─────────────────────────────────────────────────
-function CheckoutScreen({ navigate, showToast }) {
+function CheckoutScreen({ navigate, showToast, profile }) {
   const [step, setStep] = useState(1);
   const [payment, setPayment] = useState("gcash");
   const [loading, setLoading] = useState(false);
@@ -1378,6 +1427,8 @@ function CheckoutScreen({ navigate, showToast }) {
   const [showAddrForm, setShowAddrForm] = useState(false);
   const [addrForm, setAddrForm] = useState({ full_name: "", phone: "", address_line: "", city: "", province: "", zip_code: "", label: "Home" });
   const [cartItems, setCartItems] = useState([]);
+  const [walletBalance, setWalletBalance] = useState(null);
+  const [profileData, setProfileData] = useState(null);
 
   const subtotal = cartItems.reduce((s, i) => s + (i.product?.price || 0) * (Number(i.quantity) || 1), 0);
   const delivery = 65;
@@ -1388,10 +1439,11 @@ function CheckoutScreen({ navigate, showToast }) {
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
-      const [{ data: addrs }, { data: cartData }, { data: profile }] = await Promise.all([
+      const [{ data: addrs }, { data: cartData }, { data: profile }, { data: wallet }] = await Promise.all([
         supabase.from("delivery_addresses").select("*").eq("user_id", user.id).order("is_default", { ascending: false }),
         supabase.from("cart_items").select("id,product_id,quantity").eq("user_id", user.id),
         supabase.from("profiles").select("full_name,phone,address,city,province,zip_code").eq("id", user.id).maybeSingle(),
+        supabase.from("wallets").select("balance").eq("user_id", user.id).maybeSingle(),
       ]);
       const rows = cartData || [];
       const ids = [...new Set(rows.map(i => i.product_id).filter(Boolean))];
@@ -1405,8 +1457,10 @@ function CheckoutScreen({ navigate, showToast }) {
       setAddresses(list);
       const def = list.find(a => a.is_default) || list[0];
       setSelAddr(def?.id || null);
+      if (wallet) setWalletBalance(Number(wallet.balance || 0));
+      setProfileData(profile || null);
       if (!list.length && profile) {
-        setAddrForm(prev => ({ ...prev, full_name: profile.full_name || "", phone: profile.phone || "", address_line: profile.address || "", city: profile.city || "", province: profile.province || "" }));
+        setAddrForm(prev => ({ ...prev, full_name: profile.full_name || "", phone: profile.phone || "", address_line: profile.address || "", city: profile.city || "", province: profile.province || "", zip_code: profile.zip_code || "" }));
         setShowAddrForm(true);
       }
     })();
@@ -1417,17 +1471,76 @@ function CheckoutScreen({ navigate, showToast }) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user || cartItems.length === 0) { showToast("Something went wrong", "error"); setLoading(false); return; }
     const storeId = cartItems[0]?.product?.store_id;
-    const { data: order, error } = await supabase.from("orders").insert({
-      buyer_id: user.id, store_id: storeId, delivery_address_id: selAddr || null,
-      payment_method: payment, subtotal, delivery_fee: delivery, total, estimated_delivery: "30-45 mins",
-    }).select().single();
-    if (error || !order) { showToast("Failed to place order", "error"); setLoading(false); return; }
+
     const orderItemsPayload = cartItems.map(i => ({
-      order_id: order.id, product_id: i.product_id, product_name: i.product?.name || "",
+      product_id: i.product_id, product_name: i.product?.name || "",
       product_image: i.product?.images?.find(img => img.is_primary)?.url || i.product?.images?.[0]?.url || null,
       unit_price: Number(i.product?.price || 0), quantity: Math.max(1, Number(i.quantity) || 1),
     }));
-    await supabase.from("order_items").insert(orderItemsPayload);
+
+    let deliveryAddressId = selAddr;
+    if (!deliveryAddressId) {
+      const addressPayload = {
+        user_id: user.id,
+        label: addrForm.label || "Home",
+        full_name: addrForm.full_name,
+        phone: addrForm.phone,
+        address_line: addrForm.address_line,
+        city: addrForm.city,
+        province: addrForm.province,
+        zip_code: addrForm.zip_code || "",
+        is_default: true,
+      };
+      if (addressPayload.full_name && addressPayload.phone && addressPayload.address_line && addressPayload.city && addressPayload.province) {
+        const { data: newAddr, error: addrError } = await supabase.from("delivery_addresses").insert(addressPayload).select().single();
+        if (addrError || !newAddr) {
+          showToast("Please save a shipping address first", "error");
+          setLoading(false);
+          return;
+        }
+        deliveryAddressId = newAddr.id;
+        setSelAddr(newAddr.id);
+        setAddresses(prev => [...prev, newAddr]);
+      }
+    }
+
+    if (!deliveryAddressId) {
+      showToast("Please select or enter a shipping address", "error");
+      setLoading(false);
+      return;
+    }
+
+    if (payment === "wallet") {
+      const { data: walletOrderData, error: walletError } = await supabase.rpc("create_wallet_order", {
+        store_id: storeId,
+        delivery_address_id: deliveryAddressId,
+        payment_method: payment,
+        subtotal,
+        delivery_fee: delivery,
+        total,
+        estimated_delivery: "30-45 mins",
+        product_items: orderItemsPayload,
+      });
+      if (walletError || !walletOrderData?.length) {
+        const msg = walletError?.message || "Failed to place wallet order";
+        showToast(msg.includes("not found") ? "Wallet checkout is not deployed yet. Run the SQL function create_wallet_order in Supabase." : msg, "error");
+        setLoading(false);
+        return;
+      }
+      const walletOrder = walletOrderData[0];
+      setLoading(false);
+      navigate("order-confirmation", { orderId: walletOrder.order_id, orderNumber: walletOrder.order_number });
+      return;
+    }
+
+    const { data: order, error } = await supabase.from("orders").insert({
+      buyer_id: user.id, store_id: storeId, delivery_address_id: deliveryAddressId,
+      payment_method: payment, payment_status: "unpaid", subtotal, delivery_fee: delivery, total, estimated_delivery: "30-45 mins",
+    }).select().single();
+    if (error || !order) { showToast("Failed to place order", "error"); setLoading(false); return; }
+    const orderItemsPayloadWithOrder = orderItemsPayload.map(item => ({ ...item, order_id: order.id }));
+    await supabase.from("order_items").insert(orderItemsPayloadWithOrder);
+    await Promise.all(cartItems.map(i => supabase.from("products").update({ stock: Math.max(0, (i.product?.stock ?? 0) - Number(i.quantity || 0)) }).eq("id", i.product_id)));
     await supabase.from("cart_items").delete().eq("user_id", user.id);
     await supabase.from("order_status_history").insert({ order_id: order.id, status: "pending" });
     setLoading(false);
@@ -1444,10 +1557,19 @@ function CheckoutScreen({ navigate, showToast }) {
   const payments = [
     { id: "gcash", name: "GCash", desc: "Pay instantly via GCash wallet", logo: "GC", rec: true },
     { id: "maya", name: "Maya", desc: "The all-in-one money app", logo: "MY" },
+    { id: "wallet", name: "Tindahub Wallet", desc: walletBalance !== null ? `Pay using your balance (${fmt(walletBalance)} available)` : "Pay using your Tindahub balance", logo: "💳" },
     { id: "cod", name: "Cash on Delivery", desc: "Pay when your order arrives", logo: "💵" },
   ];
 
   const selAddrObj = addresses.find(a => a.id === selAddr);
+  const mapAddress = selAddrObj
+    ? `${selAddrObj.address_line}, ${selAddrObj.city}, ${selAddrObj.province} ${selAddrObj.zip_code}`.trim()
+    : addrForm.address_line
+      ? `${addrForm.address_line}, ${addrForm.city}, ${addrForm.province} ${addrForm.zip_code}`.trim()
+      : profileData
+        ? `${profileData.address}, ${profileData.city}, ${profileData.province} ${profileData.zip_code}`.trim()
+        : null;
+  const mapUrl = mapAddress ? `https://www.google.com/maps?q=${encodeURIComponent(mapAddress)}&output=embed` : null;
 
   return (
     <div style={{ paddingBottom: 100 }}>
@@ -1486,17 +1608,27 @@ function CheckoutScreen({ navigate, showToast }) {
             <h3 style={{ fontSize: 16, fontWeight: 800, marginBottom: 6 }}>Delivery Address</h3>
             <p style={{ fontSize: 13, color: "var(--ink3)", marginBottom: 16 }}>Where should we send your local finds?</p>
 
-            {/* Map placeholder (Image 1) */}
-            <div style={{ background: "linear-gradient(135deg,#e8f5e9,#c8e6c9)", borderRadius: "var(--r-xl)", height: 160, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 16, position: "relative", overflow: "hidden" }}>
-              <div style={{ textAlign: "center" }}>
-                <div style={{ fontSize: 40, marginBottom: 4 }}>📍</div>
-                <div style={{ background: "var(--orange)", color: "white", fontSize: 12, fontWeight: 700, padding: "6px 14px", borderRadius: "var(--r-pill)" }}>Confirming Area</div>
-              </div>
-              <button style={{ position: "absolute", bottom: 12, right: 12, background: "white", border: "1px solid var(--border)", borderRadius: "var(--r-pill)", padding: "7px 14px", fontSize: 12, fontWeight: 600, display: "flex", alignItems: "center", gap: 5, cursor: "pointer" }}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="var(--orange)" stroke="none"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg>
-                Use current location
-              </button>
+            <div style={{ background: "var(--surface3)", borderRadius: "var(--r-xl)", overflow: "hidden", marginBottom: 16, minHeight: 160, position: "relative" }}>
+              {mapUrl ? (
+                <iframe
+                  title="Delivery map"
+                  src={mapUrl}
+                  style={{ width: "100%", height: 220, border: 0 }}
+                  loading="lazy"
+                />
+              ) : (
+                <div style={{ padding: 20, minHeight: 220, display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center", color: "var(--ink3)" }}>
+                  <div>
+                    <div style={{ fontSize: 40, marginBottom: 4 }}>📍</div>
+                    <p style={{ fontWeight: 700, marginBottom: 6 }}>Add your delivery address to preview the route</p>
+                    <p style={{ fontSize: 13, color: "var(--ink3)" }}>Your selected address will appear here once you enter it.</p>
+                  </div>
+                </div>
+              )}
             </div>
+            {mapUrl && (
+              <button className="btn btn-outline" style={{ width: "100%", marginBottom: 14 }} onClick={() => window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapAddress)}`, "_blank")}>Open in Google Maps</button>
+            )}
 
             {addresses.map(addr => (
               <div key={addr.id} className={`addr-opt${selAddr === addr.id ? " selected" : ""}`} onClick={() => { setSelAddr(addr.id); setShowAddrForm(false); }}>
@@ -1551,6 +1683,14 @@ function CheckoutScreen({ navigate, showToast }) {
                 </div>
               ))}
             </div>
+            {payment === "wallet" && (
+              <div style={{ marginTop: 12, padding: 14, borderRadius: "var(--r-xl)", background: "var(--surface3)", border: "1px solid var(--border)" }}>
+                <p style={{ margin: 0, fontSize: 12, color: "var(--ink3)" }}>Wallet balance: {walletBalance !== null ? fmt(walletBalance) : "Not available"}</p>
+                <p style={{ margin: 6, fontSize: 12, color: walletBalance !== null && walletBalance < total ? "var(--red)" : "var(--ink3)" }}>
+                  {walletBalance !== null && walletBalance < total ? "Top up your wallet to use it for this order." : "Your wallet will be debited automatically when the order is placed."}
+                </p>
+              </div>
+            )}
             {/* Order summary sidebar (Image 1) */}
             <div className="cart-summary-box" style={{ marginTop: 16 }}>
               <p style={{ fontSize: 11, fontWeight: 700, color: "var(--ink3)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 10 }}>Order Summary</p>
@@ -1703,7 +1843,16 @@ function OrdersScreen({ navigate }) {
       const orderList = orderData || [];
       const orderIds = orderList.map(o => o.id);
       const itemsMap = await fetchOrderItems(orderIds);
-      const merged = orderList.map(o => ({ ...o, items: itemsMap[o.id] || [] }));
+
+      // fetch store details for the orders so buyer can see seller info
+      const storeIds = [...new Set(orderList.map(o => o.store_id).filter(Boolean))];
+      let storesMap = {};
+      if (storeIds.length > 0) {
+        const { data: stores } = await supabase.from("stores").select("id,name,slug,logo_url,city,province,address,owner:profiles(id,full_name,avatar_url)").in("id", storeIds);
+        storesMap = (stores || []).reduce((m, s) => { m[s.id] = s; return m; }, {});
+      }
+
+      const merged = orderList.map(o => ({ ...o, items: itemsMap[o.id] || [], store: storesMap[o.store_id] || null }));
       setOrders(merged);
       setLoading(false);
     })();
@@ -1739,6 +1888,21 @@ function OrdersScreen({ navigate }) {
                 </div>
                 <span className="badge" style={{ background: s.bg, color: s.color }}>{s.label}</span>
               </div>
+              {order.store && (
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }} onClick={e => e.stopPropagation()}>
+                  <div style={{ width: 48, height: 48, borderRadius: 12, overflow: "hidden", background: "var(--surface3)", flexShrink: 0 }}>
+                    {order.store.logo_url ? <img src={order.store.logo_url} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="" /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>{(order.store.name||"S")[0]}</div>}
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 800 }}>{order.store.name}{order.store.owner?.full_name ? ` · ${order.store.owner.full_name}` : ""}</div>
+                    <div style={{ fontSize: 12, color: "var(--ink3)" }}>{order.store.city}{order.store.address ? ` · ${order.store.address}` : ""}</div>
+                  </div>
+                  <div style={{ flexShrink: 0 }}>
+                    <button className="btn btn-outline btn-sm" onClick={e => { e.stopPropagation(); navigate("shop", { storeId: order.store.id }); }}>Visit Store</button>
+                  </div>
+                </div>
+              )}
+
               <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
                 {(order.items || []).slice(0, 3).map((item, i) => (
                   <div key={i} style={{ width: 56, height: 56, borderRadius: "var(--r-md)", overflow: "hidden", background: "var(--surface3)", flexShrink: 0 }}>
@@ -1900,7 +2064,7 @@ function OrderTrackingScreen({ navigate, params, showToast }) {
       }
       if (!params?.orderId) { setLoading(false); return; }
       const [{ data: o }, { data: h }] = await Promise.all([
-        supabase.from("orders").select("id,order_number,status,total,store_id,buyer_id,payment_method,created_at").eq("id", params.orderId).single(),
+        supabase.from("orders").select("id,order_number,status,total,store_id,buyer_id,payment_method,created_at,delivery_addresses(*), store:stores(id,name,slug,logo_url,city,province,address,owner:profiles(id,full_name,avatar_url,phone,email))").eq("id", params.orderId).single(),
         supabase.from("order_status_history").select("*").eq("order_id", params.orderId).order("created_at"),
       ]);
       setOrder(o);
@@ -1992,6 +2156,57 @@ function OrderTrackingScreen({ navigate, params, showToast }) {
           </div>
         </div>
 
+        {(order?.store || order?.delivery_addresses) && (
+          <div style={{ background: "var(--surface)", borderRadius: "var(--r-xl)", border: "1px solid var(--border)", padding: 16, marginTop: 14 }}>
+            {order?.store && (
+              <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 14 }}>
+                <div style={{ width: 54, height: 54, borderRadius: "18px", overflow: "hidden", background: "var(--surface3)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  {order.store.logo_url ? <img src={order.store.logo_url} alt={order.store.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ fontSize: 22 }}>🏪</span>}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontSize: 14, fontWeight: 700, marginBottom: 4 }}>{order.store.name || "Seller Store"}</p>
+                  <p style={{ fontSize: 12, color: "var(--ink3)", marginBottom: 4 }}>{order.store.address || "No store address saved"}</p>
+                  <p style={{ fontSize: 12, color: "var(--ink3)" }}>{order.store.city}{order.store.province ? ", " + order.store.province : ""}</p>
+                </div>
+                <button className="btn btn-outline btn-sm" onClick={() => navigate("shop", { storeId: order.store.id })}>Visit Store</button>
+              </div>
+            )}
+
+            {order?.store?.owner && (
+              <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 14, padding: 12, borderRadius: "var(--r-xl)", background: "var(--surface3)" }}>
+                <div style={{ width: 48, height: 48, borderRadius: "50%", overflow: "hidden", background: "var(--surface)" }}>
+                  {order.store.owner.avatar_url ? <img src={order.store.owner.avatar_url} alt={order.store.owner.full_name} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>👤</div>}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontWeight: 700, fontSize: 13, marginBottom: 2 }}>{order.store.owner.full_name || "Seller Contact"}</p>
+                  <p style={{ fontSize: 12, color: "var(--ink3)", marginBottom: 2 }}>{order.store.owner.phone || order.store.owner.email || "No contact listed"}</p>
+                  <p style={{ fontSize: 11, color: "var(--ink3)" }}>Seller profile</p>
+                </div>
+              </div>
+            )}
+
+            {order?.delivery_addresses && (
+              <>
+                <div style={{ marginBottom: 14 }}>
+                  <p style={{ fontSize: 11, fontWeight: 700, color: "var(--ink3)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 8 }}>Delivery Address</p>
+                  <p style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>{order.delivery_addresses.full_name}</p>
+                  <p style={{ fontSize: 12, color: "var(--ink3)", marginBottom: 4 }}>{order.delivery_addresses.address_line}</p>
+                  <p style={{ fontSize: 12, color: "var(--ink3)" }}>{order.delivery_addresses.city}, {order.delivery_addresses.province} {order.delivery_addresses.zip_code}</p>
+                </div>
+                <div style={{ borderRadius: "18px", overflow: "hidden", minHeight: 200, background: "var(--surface3)", marginBottom: 10 }}>
+                  <iframe
+                    title="Delivery location map"
+                    src={`https://www.google.com/maps?q=${encodeURIComponent(`${order.delivery_addresses.address_line}, ${order.delivery_addresses.city}, ${order.delivery_addresses.province} ${order.delivery_addresses.zip_code}`)}&output=embed`}
+                    style={{ width: "100%", height: 200, border: 0 }}
+                    loading="lazy"
+                  />
+                </div>
+                <button className="btn btn-outline" style={{ width: "100%" }} onClick={() => window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${order.delivery_addresses.address_line}, ${order.delivery_addresses.city}, ${order.delivery_addresses.province} ${order.delivery_addresses.zip_code}`)}`, "_blank")}>Open in Google Maps</button>
+              </>
+            )}
+          </div>
+        )}
+
         {canManage && nextStatus && (
           <button className="btn btn-primary" style={{ width: "100%", marginTop: 16 }} onClick={() => updateStatus(nextStatus)}>
             Mark as {STATUS_LABELS[nextStatus]?.label} →
@@ -2015,7 +2230,7 @@ function ProfileScreen({ navigate, showToast, setUser, profile: profileProp, set
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [form, setForm] = useState({ full_name: "", username: "", phone: "", bio: "", address: "", city: "", province: "" });
+  const [form, setForm] = useState({ full_name: "", username: "", phone: "", bio: "", address: "", city: "", province: "", zip_code: "" });
 
   const fetchProfile = async () => {
     setLoading(true);
@@ -2023,7 +2238,16 @@ function ProfileScreen({ navigate, showToast, setUser, profile: profileProp, set
     if (!user) { setLoading(false); return; }
     const { data } = await supabase.from("profiles").select("*").eq("id", user.id).maybeSingle();
     setLocalProfile(data);
-    if (data) setForm({ full_name: data.full_name || "", username: data.username || "", phone: data.phone || "", bio: data.bio || "", address: data.address || "", city: data.city || "", province: data.province || "" });
+    if (data) setForm({
+      full_name: data.full_name || "",
+      username: data.username || "",
+      phone: data.phone || "",
+      bio: data.bio || "",
+      address: data.address || "",
+      city: data.city || "",
+      province: data.province || "",
+      zip_code: data.zip_code || "",
+    });
     setLoading(false);
   };
 
@@ -2053,7 +2277,22 @@ function ProfileScreen({ navigate, showToast, setUser, profile: profileProp, set
   const save = async () => {
     setSaving(true);
     const { data: { user } } = await supabase.auth.getUser();
-    await supabase.from("profiles").upsert({ id: user.id, ...form });
+    if (!user) {
+      showToast("Unable to save profile. Please sign in again.", "error");
+      setSaving(false);
+      return;
+    }
+    const payload = {
+      id: user.id,
+      email: user.email,
+      ...form,
+    };
+    const { error } = await supabase.from("profiles").upsert(payload).select().single();
+    if (error) {
+      showToast(error.message || "Failed to save profile.", "error");
+      setSaving(false);
+      return;
+    }
     if (setUser) setUser(p => ({ ...p, ...form }));
     showToast("Profile saved!", "success");
     setSaving(false);
@@ -2100,7 +2339,7 @@ function ProfileScreen({ navigate, showToast, setUser, profile: profileProp, set
 
           {editing ? (
             <div style={{ background: "var(--surface)", borderRadius: "var(--r-xl)", border: "1px solid var(--border)", padding: 18, marginBottom: 18 }}>
-              {[["full_name", "Full Name", "text"], ["username", "Username", "text"], ["phone", "Phone", "tel"], ["city", "City", "text"], ["province", "Province", "text"]].map(([k, l, t]) => (
+              {[["full_name", "Full Name", "text"], ["username", "Username", "text"], ["phone", "Phone", "tel"], ["address", "Address", "text"], ["city", "City", "text"], ["province", "Province", "text"], ["zip_code", "ZIP Code", "text"]].map(([k, l, t]) => (
                 <div key={k} style={{ marginBottom: 12 }}>
                   <label style={{ fontSize: 12, fontWeight: 600, color: "var(--ink3)", display: "block", marginBottom: 5 }}>{l}</label>
                   <input className="input" style={{ height: 44 }} type={t} value={form[k]} onChange={e => setForm(p => ({ ...p, [k]: e.target.value }))} />
@@ -2336,7 +2575,7 @@ function WalletScreen({ navigate, showToast }) {
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { setLoading(false); return; }
-      const { data: w } = await supabase.from("wallets").select("*").eq("user_id", user.id).single();
+      const { data: w } = await supabase.from("wallets").select("*").eq("user_id", user.id).maybeSingle();
       setWallet(w);
       if (w) {
         const { data: t } = await supabase.from("wallet_transactions").select("*").eq("wallet_id", w.id).order("created_at", { ascending: false }).limit(20);
@@ -2346,8 +2585,10 @@ function WalletScreen({ navigate, showToast }) {
     })();
   }, []);
 
+  const [cashInAmount, setCashInAmount] = useState("");
+
   const handleCashIn = async () => {
-    const amt = parseFloat(window.prompt("Enter amount to cash in (PHP):", "100"));
+    const amt = parseFloat(cashInAmount);
     if (!amt || isNaN(amt) || amt <= 0) return showToast("Invalid amount", "error");
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return showToast("Not signed in", "error");
@@ -2365,8 +2606,12 @@ function WalletScreen({ navigate, showToast }) {
       }
       const { data: t } = await supabase.from("wallet_transactions").insert({ wallet_id: w.id, type: "credit", status: "completed", amount: amt, balance_before: oldBal, balance_after: w.balance, reference: "cash_in", description: "Cash In" }).select().single();
       if (t) setTxns(prev => [t, ...prev]);
+      setCashInAmount("");
       showToast("Cash in successful", "success");
-    } catch { showToast("Failed to cash in", "error"); }
+    } catch (error) {
+      console.error(error);
+      showToast("Failed to cash in", "error");
+    }
     setLoading(false);
   };
 
@@ -2384,12 +2629,18 @@ function WalletScreen({ navigate, showToast }) {
           <>
             <div className="wallet-card" style={{ marginBottom: 20 }}>
               <div style={{ position: "relative", zIndex: 1 }}>
-                <p style={{ fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,.7)", marginBottom: 4 }}>Earnings Balance</p>
+                <p style={{ fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,.7)", marginBottom: 4 }}>Tindahub Wallet</p>
                 <p style={{ fontSize: 36, fontWeight: 800, color: "white", marginBottom: 4 }}>{fmt(wallet?.balance || 0)}</p>
                 <p style={{ fontSize: 12, color: "rgba(255,255,255,.5)", marginBottom: 20 }}>{wallet?.currency || "PHP"}</p>
-                <div style={{ display: "flex", gap: 10 }}>
-                  <button onClick={handleCashIn} style={{ padding: "9px 18px", background: "rgba(255,255,255,.2)", color: "white", border: "1px solid rgba(255,255,255,.2)", borderRadius: "var(--r-pill)", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>Cash In</button>
-                  <button onClick={() => showToast("Coming soon", "success")} style={{ padding: "9px 18px", background: "rgba(255,255,255,.1)", color: "rgba(255,255,255,.8)", border: "1px solid rgba(255,255,255,.2)", borderRadius: "var(--r-pill)", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>Withdraw</button>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                    <input className="input" type="number" value={cashInAmount} onChange={e => setCashInAmount(e.target.value)} placeholder="Cash in amount" style={{ flex: 1, height: 44, background: "white" }} />
+                    <button onClick={handleCashIn} className="btn btn-primary" style={{ width: 130 }}>Cash In</button>
+                  </div>
+                  <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                    <button onClick={() => showToast("Withdraw feature coming soon", "success")} className="btn btn-outline" style={{ width: 130 }}>Withdraw</button>
+                    {!wallet && <span style={{ fontSize: 12, color: "rgba(255,255,255,.8)" }}>No wallet yet? Cash in to create one automatically.</span>}
+                  </div>
                 </div>
               </div>
             </div>
@@ -2408,6 +2659,153 @@ function WalletScreen({ navigate, showToast }) {
             ))}
           </>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ── FINANCE / ADMIN DASHBOARD ───────────────────────────────────────────────
+function FinanceScreen({ navigate, showToast }) {
+  const [loading, setLoading] = useState(true);
+  const [wallets, setWallets] = useState([]);
+  const [txns, setTxns] = useState([]);
+  const [selectedWallet, setSelectedWallet] = useState(null);
+  const [adjAmount, setAdjAmount] = useState("");
+  const [adjType, setAdjType] = useState("credit");
+  const [adjNote, setAdjNote] = useState("");
+
+  const fetchData = async () => {
+    setLoading(true);
+    const [{ data: w }, { data: t }] = await Promise.all([
+      supabase.from("wallets").select("*, user:profiles(id,full_name,avatar_url,email)").order("balance", { ascending: false }),
+      supabase.from("wallet_transactions").select("*, wallet:wallets(id,user_id)").order("created_at", { ascending: false }).limit(50),
+    ]);
+    setWallets(w || []);
+    setTxns(t || []);
+    setLoading(false);
+  };
+
+  useEffect(() => { fetchData(); }, []);
+
+  const totalBalance = wallets.reduce((s, w) => s + Number(w.balance || 0), 0);
+
+  const markTxnCompleted = async (id) => {
+    await supabase.from("wallet_transactions").update({ status: "completed" }).eq("id", id);
+    setTxns(ts => ts.map(x => x.id === id ? { ...x, status: "completed" } : x));
+    showToast("Transaction updated", "success");
+  };
+
+  const performAdjustment = async () => {
+    const amt = Number(adjAmount);
+    if (!selectedWallet) return showToast("Select a wallet", "error");
+    if (!amt || amt <= 0) return showToast("Enter a valid amount", "error");
+
+    setLoading(true);
+    try {
+      let wallet = wallets.find(w => w.id === selectedWallet);
+      if (!wallet) {
+        const { data } = await supabase.from("wallets").select("*").eq("id", selectedWallet).single();
+        wallet = data;
+      }
+      const newBalance = Number(wallet.balance || 0) + (adjType === "credit" ? amt : -amt);
+      const { error: upErr } = await supabase.from("wallets").update({ balance: newBalance }).eq("id", selectedWallet);
+      if (upErr) throw upErr;
+      const { error: itErr } = await supabase.from("wallet_transactions").insert([{ wallet_id: selectedWallet, type: adjType, amount: amt, currency: wallet.currency || "PHP", description: adjNote || "Admin adjustment", status: "completed" }]);
+      if (itErr) throw itErr;
+      showToast("Wallet updated", "success");
+      setAdjAmount(""); setAdjNote(""); setSelectedWallet(null);
+      await fetchData();
+    } catch (e) {
+      console.error(e);
+      showToast(e.message || "Failed to update wallet", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) return <Spinner />;
+
+  return (
+    <div>
+      <div className="top-bar">
+        <button onClick={() => navigate("home")} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ink3)" }}>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+        </button>
+        <h2 style={{ fontSize: 18, fontWeight: 800 }}>Finance</h2>
+        <div style={{ width: 28 }} />
+      </div>
+
+      <div style={{ padding: "16px 20px" }}>
+        <div style={{ display: "flex", gap: 12, marginBottom: 14 }}>
+          <div className="stat-card" style={{ flex: 1 }}>
+            <p className="stat-lbl">Total User Wallets</p>
+            <p className="stat-val">{fmt(totalBalance)}</p>
+            <p style={{ fontSize: 12, color: "var(--ink3)" }}>{wallets.length} wallets</p>
+          </div>
+          <div className="stat-card" style={{ flex: 1 }}>
+            <p className="stat-lbl">Recent Transactions</p>
+            <p className="stat-val">{txns.length}</p>
+            <p style={{ fontSize: 12, color: "var(--ink3)" }}>Last {txns.length} entries</p>
+          </div>
+        </div>
+
+        <div style={{ marginBottom: 16 }}>
+          <h3 style={{ fontSize: 14, fontWeight: 800 }}>Adjust Wallet Balance</h3>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
+            <select value={selectedWallet || ""} onChange={e => setSelectedWallet(e.target.value)} style={{ padding: 8, borderRadius: 8 }}>
+              <option value="">Select wallet</option>
+              {wallets.map(w => (
+                <option key={w.id} value={w.id}>{w.user?.full_name || w.user?.email || w.user?.id} — {fmt(w.balance)}</option>
+              ))}
+            </select>
+            <input placeholder="Amount" value={adjAmount} onChange={e => setAdjAmount(e.target.value)} style={{ padding: 8, borderRadius: 8, width: 120 }} />
+            <select value={adjType} onChange={e => setAdjType(e.target.value)} style={{ padding: 8, borderRadius: 8 }}>
+              <option value="credit">Credit</option>
+              <option value="debit">Debit</option>
+            </select>
+            <input placeholder="Note (optional)" value={adjNote} onChange={e => setAdjNote(e.target.value)} style={{ padding: 8, borderRadius: 8, flex: 1 }} />
+            <button className="btn" onClick={performAdjustment}>Apply Adjustment</button>
+          </div>
+        </div>
+
+        <h3 style={{ fontSize: 14, fontWeight: 800, marginBottom: 10 }}>Wallets</h3>
+        <div style={{ display: "grid", gap: 10, marginBottom: 18 }}>
+          {wallets.map(w => (
+            <div key={w.id} className="menu-row">
+              <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+                <div style={{ width: 48, height: 48, borderRadius: 10, overflow: "hidden", background: "var(--surface3)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>{w.user?.avatar_url ? <img src={w.user.avatar_url} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="" /> : (w.user?.full_name || w.user?.email || "U")[0]}</div>
+                <div>
+                  <div style={{ fontWeight: 800 }}>{w.user?.full_name || w.user?.email}</div>
+                  <div style={{ fontSize: 12, color: "var(--ink3)" }}>{w.user?.email}</div>
+                </div>
+              </div>
+              <div style={{ textAlign: "right" }}>
+                <div style={{ fontWeight: 800 }}>{fmt(w.balance)}</div>
+                <div style={{ fontSize: 12, color: "var(--ink3)" }}>{w.currency || "PHP"}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <h3 style={{ fontSize: 14, fontWeight: 800, marginBottom: 10 }}>Recent Transactions</h3>
+        <div style={{ display: "grid", gap: 8 }}>
+          {txns.map(t => (
+            <div key={t.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: 12, background: "var(--surface)", borderRadius: "var(--r-xl)", border: "1px solid var(--border)" }}>
+              <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                <div style={{ width: 44, height: 44, borderRadius: "var(--r-md)", background: t.type === "credit" ? "var(--green-light)" : "var(--red-light)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>{t.type === "credit" ? "↑" : "↓"}</div>
+                <div>
+                  <div style={{ fontWeight: 800 }}>{t.description || t.type}</div>
+                  <div style={{ fontSize: 12, color: "var(--ink3)" }}>{new Date(t.created_at).toLocaleString()}</div>
+                </div>
+              </div>
+              <div style={{ textAlign: "right" }}>
+                <div style={{ fontWeight: 800 }}>{t.type === "credit" ? "+" : "-"}{fmt(t.amount)}</div>
+                <div style={{ fontSize: 12, color: "var(--ink3)" }}>{t.status}</div>
+                {t.status !== "completed" && <button className="btn btn-sm" style={{ marginTop: 8 }} onClick={() => markTxnCompleted(t.id)}>Mark Completed</button>}
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -2822,7 +3220,7 @@ function AddProductScreen({ navigate, showToast, params }) {
 }
 
 // ── BOTTOM NAV ──────────────────────────────────────────────────────────────
-function BottomNav({ screen, navigate, cartCount }) {
+function BottomNav({ screen, navigate, cartCount, profile }) {
   const isAuth = ["login", "signup", "onboarding"].includes(screen);
   if (isAuth) return null;
 
@@ -2835,6 +3233,8 @@ function BottomNav({ screen, navigate, cartCount }) {
       countBadge: true,
     },
     { id: "orders", label: "Orders", icon: (active) => <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={active ? "var(--orange)" : "currentColor"} strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg> },
+    // Finance tab visible only to admin
+    ...(profile?.role === "admin" ? [{ id: "finance", label: "Finance", icon: (active) => <svg width="22" height="22" viewBox="0 0 24 24" fill={active ? "var(--orange)" : "none"} stroke={active ? "var(--orange)" : "currentColor"} strokeWidth="1"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="18" cy="12" r="2"/></svg> }] : []),
     { id: "profile", label: "Profile", icon: (active) => <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={active ? "var(--orange)" : "currentColor"} strokeWidth="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg> },
   ];
 
@@ -2906,10 +3306,12 @@ export default function App() {
       case "order-confirmation": return <OrderConfirmScreen {...sp} />;
       case "order-tracking": return <OrderTrackingScreen {...sp} />;
       case "orders": return <OrdersScreen {...sp} />;
+      case "shop": return <ShopScreen {...sp} />;
       case "write-review": return <WriteReviewScreen {...sp} />;
       case "profile": return <ProfileScreen {...sp} />;
       case "settings": return <SettingsScreen {...sp} />;
       case "wallet": return <WalletScreen {...sp} />;
+      case "finance": return <FinanceScreen {...sp} />;
       case "seller-dashboard": return <SellerDashboard {...sp} />;
       case "add-product": return <AddProductScreen {...sp} />;
       case "login": return <LoginScreen {...sp} />;
@@ -2929,7 +3331,7 @@ export default function App() {
       ) : (
         <div id="app">
           <div className="main-content">{renderScreen()}</div>
-          <BottomNav screen={screen} navigate={navigate} cartCount={cartCount} />
+          <BottomNav screen={screen} navigate={navigate} cartCount={cartCount} profile={profile} />
         </div>
       )}
     </>
