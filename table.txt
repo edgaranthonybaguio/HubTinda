@@ -217,6 +217,7 @@ where
 update on products for EACH row
 execute FUNCTION update_updated_at ();
 
+
  table public.profiles (
   id uuid not null,
   role public.user_role not null default 'buyer'::user_role,
@@ -331,6 +332,7 @@ execute FUNCTION refresh_product_rating ();
  trigger stores_updated_at BEFORE
 update on stores for EACH row
 execute FUNCTION update_updated_at ();
+
 
  table public.vouchers (
   id uuid not null default extensions.uuid_generate_v4 (),
